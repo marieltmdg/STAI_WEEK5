@@ -591,118 +591,120 @@ def render_streamlit_app(
         st.session_state.active_document_name = "school_handbook.pdf + " + " + ".join(deduped_names)
         st.session_state.knowledge_base_label = st.session_state.active_document_name
 
-    if st.session_state.get("uploaded_pdf_entries") or st.session_state.get("uploaded_pdf_names"):
+    with st.sidebar:
+        st.subheader("Knowledge Base")
         active_document = st.session_state.get("active_document_name", "school_handbook.pdf")
-        st.caption(f"Knowledge base: {active_document}")
-        if st.button("Reset uploaded PDFs", type="secondary"):
-            for key in [
-                "gateway",
-                "uploaded_pdf_entries",
-                "uploaded_pdf_paths",
-                "uploaded_pdf_names",
-                "uploaded_pdf_chunk_count",
-                "knowledge_base_label",
-                "active_document_name",
-                "processed_pdf_keys",
-                "pending_pdf_upload",
-                "knowledge_base_root",
-                "knowledge_base_student_id",
-            ]:
-                st.session_state.pop(key, None)
-            st.session_state.file_uploader_nonce = st.session_state.get("file_uploader_nonce", 0) + 1
-            st.session_state.gateway = gateway
-            st.session_state.active_document_name = "school_handbook.pdf"
-            current_gateway = gateway
-            st.success("Uploaded PDFs reset. The knowledge base is back to school_handbook.pdf.")
-            st.rerun()
+        chunk_count = st.session_state.get("uploaded_pdf_chunk_count")
+        st.caption(active_document)
+        if chunk_count:
+            st.success(f"{chunk_count} searchable chunks")
 
-    uploader_key = f"pdf_uploader_{st.session_state.get('file_uploader_nonce', 0)}"
-    uploaded_pdf = st.file_uploader("Add a PDF to the knowledge base", type=["pdf"], key=uploader_key)
-    if uploaded_pdf is not None:
-        upload_key = f"{uploaded_pdf.name}:{uploaded_pdf.size}"
-        if (
-            on_pdf_upload is not None
-            and st.session_state.get("pending_pdf_upload") is None
-            and upload_key not in st.session_state.get("processed_pdf_keys", [])
-        ):
-            st.session_state.pending_pdf_upload = {
-                "key": upload_key,
-                "name": uploaded_pdf.name,
-                "bytes": uploaded_pdf.getvalue(),
-            }
-            st.rerun()
-
-    pending_upload = st.session_state.get("pending_pdf_upload")
-    if pending_upload is not None and on_pdf_upload is not None:
-        upload_key = pending_upload["key"]
-        upload_name = pending_upload["name"]
-        status = st.status(
-            f"Loading {upload_name} into the knowledge base...",
-            expanded=True,
-        )
-        status.write("Reading PDF text and creating searchable chunks.")
-        status.write("Creating embeddings and rebuilding the combined knowledge base.")
-
-        class PendingUploadedFile:
-            name = upload_name
-
-            def __init__(self, file_bytes: bytes, key: str):
-                self._file_bytes = file_bytes
-                self.upload_key = key
-
-            def getbuffer(self):
-                return self._file_bytes
-
-            def getvalue(self):
-                return self._file_bytes
-
-        try:
-            updated_gateway = on_pdf_upload(PendingUploadedFile(pending_upload["bytes"], upload_key))
-            if updated_gateway is not None:
-                current_gateway = updated_gateway
-                st.session_state.gateway = updated_gateway
-                processed_keys = st.session_state.setdefault("processed_pdf_keys", [])
-                processed_keys.append(upload_key)
-                st.session_state.pending_pdf_upload = None
-                st.session_state.file_uploader_nonce = st.session_state.get("file_uploader_nonce", 0) + 1
-                st.session_state.active_document_name = st.session_state.get(
+        if st.session_state.get("uploaded_pdf_entries") or st.session_state.get("uploaded_pdf_names"):
+            if st.button("Reset uploaded PDFs", type="secondary", use_container_width=True):
+                for key in [
+                    "gateway",
+                    "uploaded_pdf_entries",
+                    "uploaded_pdf_paths",
+                    "uploaded_pdf_names",
+                    "uploaded_pdf_chunk_count",
                     "knowledge_base_label",
-                    f"school_handbook.pdf + {upload_name}",
-                )
-                chunk_count = st.session_state.get("uploaded_pdf_chunk_count")
-                if chunk_count:
-                    status.update(
-                        label=f"Added {upload_name}. Knowledge base now has {chunk_count} searchable chunks.",
-                        state="complete",
-                        expanded=False,
+                    "active_document_name",
+                    "processed_pdf_keys",
+                    "pending_pdf_upload",
+                    "knowledge_base_root",
+                    "knowledge_base_student_id",
+                ]:
+                    st.session_state.pop(key, None)
+                st.session_state.file_uploader_nonce = st.session_state.get("file_uploader_nonce", 0) + 1
+                st.session_state.gateway = gateway
+                st.session_state.active_document_name = "school_handbook.pdf"
+                current_gateway = gateway
+                st.success("Uploaded PDFs reset.")
+                st.rerun()
+
+        uploader_key = f"pdf_uploader_{st.session_state.get('file_uploader_nonce', 0)}"
+        uploaded_pdf = st.file_uploader("Add PDF", type=["pdf"], key=uploader_key)
+        if uploaded_pdf is not None:
+            upload_key = f"{uploaded_pdf.name}:{uploaded_pdf.size}"
+            if (
+                on_pdf_upload is not None
+                and st.session_state.get("pending_pdf_upload") is None
+                and upload_key not in st.session_state.get("processed_pdf_keys", [])
+            ):
+                st.session_state.pending_pdf_upload = {
+                    "key": upload_key,
+                    "name": uploaded_pdf.name,
+                    "bytes": uploaded_pdf.getvalue(),
+                }
+                st.rerun()
+
+        pending_upload = st.session_state.get("pending_pdf_upload")
+        if pending_upload is not None and on_pdf_upload is not None:
+            upload_key = pending_upload["key"]
+            upload_name = pending_upload["name"]
+            status = st.status(
+                f"Loading {upload_name}...",
+                expanded=True,
+            )
+            status.write("Reading PDF text and rebuilding the combined knowledge base.")
+
+            class PendingUploadedFile:
+                name = upload_name
+
+                def __init__(self, file_bytes: bytes, key: str):
+                    self._file_bytes = file_bytes
+                    self.upload_key = key
+
+                def getbuffer(self):
+                    return self._file_bytes
+
+                def getvalue(self):
+                    return self._file_bytes
+
+            try:
+                updated_gateway = on_pdf_upload(PendingUploadedFile(pending_upload["bytes"], upload_key))
+                if updated_gateway is not None:
+                    current_gateway = updated_gateway
+                    st.session_state.gateway = updated_gateway
+                    processed_keys = st.session_state.setdefault("processed_pdf_keys", [])
+                    processed_keys.append(upload_key)
+                    st.session_state.pending_pdf_upload = None
+                    st.session_state.file_uploader_nonce = st.session_state.get("file_uploader_nonce", 0) + 1
+                    st.session_state.active_document_name = st.session_state.get(
+                        "knowledge_base_label",
+                        f"school_handbook.pdf + {upload_name}",
                     )
+                    chunk_count = st.session_state.get("uploaded_pdf_chunk_count")
+                    if chunk_count:
+                        status.update(
+                            label=f"Added {upload_name}.",
+                            state="complete",
+                            expanded=False,
+                        )
+                    else:
+                        status.update(
+                            label=f"Added {upload_name}.",
+                            state="complete",
+                            expanded=False,
+                        )
+                    st.rerun()
                 else:
                     status.update(
-                        label=f"Added {upload_name} to the knowledge base.",
-                        state="complete",
-                        expanded=False,
+                        label=f"Could not add {upload_name}.",
+                        state="error",
+                        expanded=True,
                     )
-                st.rerun()
-            else:
+            except Exception as exc:
+                st.session_state.pending_pdf_upload = None
                 status.update(
-                    label=f"Could not add {upload_name}.",
+                    label=f"Could not add {upload_name}: {exc}",
                     state="error",
                     expanded=True,
                 )
-        except Exception as exc:
-            st.session_state.pending_pdf_upload = None
-            status.update(
-                label=f"Could not add {upload_name}: {exc}",
-                state="error",
-                expanded=True,
-            )
-        chunk_count = st.session_state.get("uploaded_pdf_chunk_count")
 
     chunk_count = st.session_state.get("uploaded_pdf_chunk_count")
     active_document = st.session_state.get("active_document_name", "school_handbook.pdf")
-    if chunk_count:
-        st.success(f"Knowledge base active: {active_document} ({chunk_count} searchable chunks).")
-    else:
+    if not chunk_count:
         st.session_state.setdefault("active_document_name", "school_handbook.pdf")
 
     for message in st.session_state.messages:
