@@ -215,9 +215,17 @@ class ChatDeliveryGateway:
                     if doc_key not in seen_docs:
                         docs.append(doc)
                         seen_docs.add(doc_key)
+            if hasattr(self.bot, "_keyword_score"):
+                docs = sorted(docs, key=lambda doc: self.bot._keyword_score(clean_input, doc.page_content), reverse=True)
             handbook_context = "\n\n".join(self._format_retrieved_doc(doc) for doc in docs)
             seen_sources = set()
+            keyword_scores = [self.bot._keyword_score(clean_input, doc.page_content) for doc in docs] if hasattr(self.bot, "_keyword_score") else []
+            best_keyword_score = max(keyword_scores, default=0.0)
             for doc in docs:
+                if keyword_scores:
+                    doc_score = self.bot._keyword_score(clean_input, doc.page_content)
+                    if best_keyword_score >= 0.5 and doc_score < best_keyword_score - 0.2:
+                        continue
                 source_label = self._source_label(doc)
                 if source_label not in seen_sources:
                     source_labels.append(source_label)
@@ -564,12 +572,22 @@ def render_streamlit_app(
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    if st.session_state.get("uploaded_pdf_names"):
+    if st.session_state.get("uploaded_pdf_entries"):
+        uploaded_names = list(dict.fromkeys(entry["name"] for entry in st.session_state.uploaded_pdf_entries.values()))
+        st.session_state.active_document_name = "school_handbook.pdf + " + " + ".join(uploaded_names)
+        st.session_state.knowledge_base_label = st.session_state.active_document_name
+    elif st.session_state.get("uploaded_pdf_names"):
+        deduped_names = list(dict.fromkeys(st.session_state.uploaded_pdf_names))
+        st.session_state.active_document_name = "school_handbook.pdf + " + " + ".join(deduped_names)
+        st.session_state.knowledge_base_label = st.session_state.active_document_name
+
+    if st.session_state.get("uploaded_pdf_entries") or st.session_state.get("uploaded_pdf_names"):
         active_document = st.session_state.get("active_document_name", "school_handbook.pdf")
         st.caption(f"Knowledge base: {active_document}")
         if st.button("Reset uploaded PDFs", type="secondary"):
             for key in [
                 "gateway",
+                "uploaded_pdf_entries",
                 "uploaded_pdf_paths",
                 "uploaded_pdf_names",
                 "uploaded_pdf_chunk_count",
@@ -581,13 +599,15 @@ def render_streamlit_app(
                 "knowledge_base_student_id",
             ]:
                 st.session_state.pop(key, None)
+            st.session_state.file_uploader_nonce = st.session_state.get("file_uploader_nonce", 0) + 1
             st.session_state.gateway = gateway
             st.session_state.active_document_name = "school_handbook.pdf"
             current_gateway = gateway
             st.success("Uploaded PDFs reset. The knowledge base is back to school_handbook.pdf.")
             st.rerun()
 
-    uploaded_pdf = st.file_uploader("Upload a PDF for this session", type=["pdf"])
+    uploader_key = f"pdf_uploader_{st.session_state.get('file_uploader_nonce', 0)}"
+    uploaded_pdf = st.file_uploader("Add a PDF to the knowledge base", type=["pdf"], key=uploader_key)
     if uploaded_pdf is not None:
         upload_key = f"{uploaded_pdf.name}:{uploaded_pdf.size}"
         if (
@@ -611,14 +631,14 @@ def render_streamlit_app(
             expanded=True,
         )
         status.write("Reading PDF text and creating searchable chunks.")
-        status.write("Adding this PDF to the existing handbook knowledge base.")
-        progress = st.progress(20, text="Preparing PDF for indexing...")
+        status.write("Creating embeddings and rebuilding the combined knowledge base.")
 
         class PendingUploadedFile:
             name = upload_name
 
-            def __init__(self, file_bytes: bytes):
+            def __init__(self, file_bytes: bytes, key: str):
                 self._file_bytes = file_bytes
+                self.upload_key = key
 
             def getbuffer(self):
                 return self._file_bytes
@@ -627,21 +647,19 @@ def render_streamlit_app(
                 return self._file_bytes
 
         try:
-            with st.spinner("Embedding PDF content. This can take a moment."):
-                progress.progress(55, text="Creating embeddings and rebuilding the combined knowledge base...")
-                updated_gateway = on_pdf_upload(PendingUploadedFile(pending_upload["bytes"]))
+            updated_gateway = on_pdf_upload(PendingUploadedFile(pending_upload["bytes"], upload_key))
             if updated_gateway is not None:
                 current_gateway = updated_gateway
                 st.session_state.gateway = updated_gateway
                 processed_keys = st.session_state.setdefault("processed_pdf_keys", [])
                 processed_keys.append(upload_key)
                 st.session_state.pending_pdf_upload = None
+                st.session_state.file_uploader_nonce = st.session_state.get("file_uploader_nonce", 0) + 1
                 st.session_state.active_document_name = st.session_state.get(
                     "knowledge_base_label",
                     f"school_handbook.pdf + {upload_name}",
                 )
                 chunk_count = st.session_state.get("uploaded_pdf_chunk_count")
-                progress.progress(100, text="Knowledge base ready.")
                 if chunk_count:
                     status.update(
                         label=f"Added {upload_name}. Knowledge base now has {chunk_count} searchable chunks.",

@@ -252,14 +252,20 @@ def _keyword_score(query: str, text: str) -> float:
     if not query_tokens:
         return 0.0
 
-    text_tokens = set(_tokenize(text))
-    overlap = sum(1 for token in query_tokens if token in text_tokens)
-    score = overlap / len(set(query_tokens))
+    text_tokens = _tokenize(text)
+    text_token_set = set(text_tokens)
+    unique_query_tokens = set(query_tokens)
+    overlap = sum(1 for token in unique_query_tokens if token in text_token_set)
+    score = overlap / len(unique_query_tokens)
 
     normalized_query = " ".join(query.lower().split())
     normalized_text = " ".join(text.lower().split())
     if normalized_query and normalized_query in normalized_text:
         score += 0.5
+    for index in range(len(query_tokens) - 1):
+        phrase = f"{query_tokens[index]} {query_tokens[index + 1]}"
+        if phrase in normalized_text:
+            score += 0.25
 
     return min(score, 1.0)
 
@@ -556,6 +562,9 @@ class SecureStudentBot:
     def _redact_pii(self, text: str) -> str:
         return redact_pii(text)
 
+    def _keyword_score(self, query: str, text: str) -> float:
+        return _keyword_score(query, text)
+
     def _output_validator(self, response: str) -> str:
         restricted_phrases = ["i am diagnosing you", "my diagnosis is", "you have", "i prescribe"]
         if any(phrase in response.lower() for phrase in restricted_phrases):
@@ -676,7 +685,9 @@ def build_handbook_bundle(
     good_retriever = MMRRetriever(vector_store, llm_strict, k=4, fetch_k=16)
     strict_prompt = """
 You are a strict academic assistant. Answer the user's question using the provided context.
-Use direct facts from either the retrieved handbook context or the student memory.
+Use direct wording from either the retrieved handbook context or the student memory.
+Answer with the most relevant sentence(s) or short excerpt from the provided context. Do not paraphrase beyond light trimming for readability.
+Prefer the retrieved source that most directly matches the user's question.
 When using retrieved context, include a final Source line with the source file name and page from the [Source: ...] label.
 If the user asks about the current conversation, answer from STUDENT MEMORY.
 For questions about order, such as first or previous questions, use RECENT CONVERSATION in oldest-to-newest order.

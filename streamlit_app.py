@@ -33,23 +33,29 @@ def main():
     def handle_pdf_upload(uploaded_file):
         upload_root = Path(st.session_state.setdefault("knowledge_base_root", tempfile.mkdtemp(prefix="handbook_upload_")))
         student_id = st.session_state.setdefault("knowledge_base_student_id", f"expanded_{uuid4().hex}")
-        uploaded_paths = st.session_state.setdefault("uploaded_pdf_paths", [])
-        uploaded_names = st.session_state.setdefault("uploaded_pdf_names", [])
+        uploaded_entries = st.session_state.setdefault("uploaded_pdf_entries", {})
 
         safe_name = Path(uploaded_file.name).name
-        temp_path = upload_root / f"{uuid4().hex}_{safe_name}"
-        temp_path.write_bytes(uploaded_file.getbuffer())
-        uploaded_paths.append(str(temp_path))
-        uploaded_names.append(safe_name)
+        upload_key = getattr(uploaded_file, "upload_key", f"{safe_name}:{len(uploaded_file.getbuffer())}")
+        if upload_key not in uploaded_entries:
+            upload_dir = upload_root / uuid4().hex
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            temp_path = upload_dir / safe_name
+            temp_path.write_bytes(uploaded_file.getbuffer())
+            uploaded_entries[upload_key] = {
+                "name": safe_name,
+                "path": str(temp_path),
+            }
 
         rebuilt = build_handbook_bundle(
-            additional_handbook_paths=[Path(path) for path in uploaded_paths],
+            additional_handbook_paths=[Path(entry["path"]) for entry in uploaded_entries.values()],
             student_id=student_id,
             memory_path=upload_root / "student_memory_db",
             vector_path=upload_root / "handbook_vector_db",
             force_rebuild_vector_db=True,
         )
         st.session_state.uploaded_pdf_chunk_count = len(rebuilt.chunks)
+        uploaded_names = [entry["name"] for entry in uploaded_entries.values()]
         st.session_state.knowledge_base_label = "school_handbook.pdf + " + " + ".join(uploaded_names)
         return rebuilt.chat_gateway
 
