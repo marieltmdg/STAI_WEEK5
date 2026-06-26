@@ -262,7 +262,7 @@ def build_handbook_bundle(
         chunks = text_splitter.split_documents(docs_pdf)
         db.add_documents(chunks)
 
-    good_retriever = db.as_retriever(search_type="mmr", search_kwargs={"k": 3, "fetch_k": 10})
+    good_retriever = db.as_retriever(search_type="mmr", search_kwargs={"k": 4, "fetch_k": 16})
     llm_strict = Ollama(model=model_name, temperature=0.0, base_url=ollama_base_url)
     strict_prompt = ChatPromptTemplate.from_template(
         """

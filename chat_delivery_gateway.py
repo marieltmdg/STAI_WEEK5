@@ -49,15 +49,19 @@ def _sse(data: dict[str, Any], event: str = "message") -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=True)}\n\n"
 
 
-def _build_retrieval_query(text: str) -> str:
+def _build_retrieval_queries(text: str) -> list[str]:
     normalized = " ".join(text.split())
+    queries = [normalized]
     if len(normalized.split()) <= 5 and not normalized.endswith("?"):
-        return (
-            "Find the handbook section that directly answers this lookup: "
-            f"{normalized}. Include exact names, policy headings, requirements, "
-            "definitions, and closely related terms."
+        queries.append(
+            "Find the handbook section that directly answers this short lookup: "
+            f"{normalized}."
         )
-    return text
+        queries.append(
+            "Find any policy, framework, rule, requirement, consequence, definition, "
+            f"or heading related to: {normalized}."
+        )
+    return queries
 
 
 @dataclass
@@ -156,11 +160,18 @@ class ChatDeliveryGateway:
         clean_input = user_input
         if hasattr(self.bot, "_redact_pii"):
             clean_input = self.bot._redact_pii(user_input)
-        retrieval_query = _build_retrieval_query(clean_input)
+        retrieval_queries = _build_retrieval_queries(clean_input)
 
         handbook_context = ""
         if hasattr(self.bot, "retriever"):
-            docs = self.bot.retriever.invoke(retrieval_query)
+            docs = []
+            seen_docs = set()
+            for retrieval_query in retrieval_queries:
+                for doc in self.bot.retriever.invoke(retrieval_query):
+                    doc_key = (doc.page_content, tuple(sorted(doc.metadata.items())) if hasattr(doc, "metadata") else ())
+                    if doc_key not in seen_docs:
+                        docs.append(doc)
+                        seen_docs.add(doc_key)
             handbook_context = "\n".join(doc.page_content for doc in docs)
 
         memory_context = ""

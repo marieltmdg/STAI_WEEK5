@@ -13,7 +13,7 @@ The Week 3 and Week 4 notebooks are reference material only. The runtime app doe
 
 The production Python files lift the final notebook patterns instead of sourcing notebooks at runtime:
 
-- Week 3 notebook cells 76, 92, 101, and 131 map to [handbook_support_bot.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/LAB5/handbook_support_bot.py): `PyPDFLoader`, `SemanticChunker`, Chroma vector storage, MMR retrieval with `k=3` and `fetch_k=10`, `gemma3:1b` at `temperature=0.0`, and the strict `Data Not Found` grounded prompt.
+- Week 3 notebook cells 76, 92, 101, and 131 map to [handbook_support_bot.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/LAB5/handbook_support_bot.py): `PyPDFLoader`, `SemanticChunker`, Chroma vector storage, MMR retrieval, `gemma3:1b` at `temperature=0.0`, and the strict `Data Not Found` grounded prompt. The deployed retriever uses `k=4` and `fetch_k=16` to improve coverage for short policy questions while preserving the Week 3 MMR approach.
 - Week 4 notebook cells 23, 69, and 71 map to [handbook_support_bot.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/LAB5/handbook_support_bot.py): PII redaction, Chroma-backed memory with summary/recent conversation context, semantic recall, input policy guardrails, output guardrails, and safe memory storage after redaction.
 - Week 5 delivery requirements are implemented in [chat_delivery_gateway.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/LAB5/chat_delivery_gateway.py): shared Streamlit/FastAPI gateway, response streaming, SSE events, and JSONL LLMOps logging.
 
@@ -162,7 +162,26 @@ FastAPI is available at:
 http://localhost:8000
 ```
 
-## 9. Troubleshooting
+## 9. Deploy On Render
+
+Render can build this project from the Dockerfile.
+
+1. Push this folder to GitHub.
+2. In Render, choose **New > Web Service**.
+3. Connect the GitHub repository.
+4. Set **Language** to `Docker`.
+5. Keep the Dockerfile path as `Dockerfile`.
+6. Add an environment variable:
+
+```text
+OLLAMA_BASE_URL=<public Ollama-compatible endpoint>
+```
+
+Render cannot use `http://localhost:11434` from your laptop. For deployment, Ollama must run on a public or Render-private service that this app can reach.
+
+Render forwards one public HTTP port per web service. This Dockerfile binds Streamlit to Render's `PORT` value, so the public Render URL opens the Streamlit app. The FastAPI server still starts inside the container on port `8000`; deploy it as a second Render service if you need the API public too.
+
+## 10. Troubleshooting
 
 If the bot fails to initialize, confirm Ollama is running and both models are pulled.
 
