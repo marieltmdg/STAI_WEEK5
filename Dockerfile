@@ -20,6 +20,7 @@ RUN rm -rf \
     /opt/venv/lib/python3.12/site-packages/numpy \
     /opt/venv/lib/python3.12/site-packages/numpy.libs \
     /opt/venv/lib/python3.12/site-packages/numpy-*.dist-info
+RUN /opt/venv/bin/python -c "import fastapi, streamlit, uvicorn; print('runtime imports ok')"
 
 FROM python:3.12-slim
 

@@ -14,15 +14,6 @@ ollama pull gemma3:1b
 ollama pull nomic-embed-text
 ```
 
-For Gemini runs on Render, set these environment variables:
-
-```bash
-LLM_PROVIDER=gemini
-GEMINI_API_KEY=your_api_key_here
-GEMINI_MODEL=gemini-3.5-flash
-GEMINI_EMBEDDING_MODEL=gemini-embedding-2
-```
-
 ## Local Setup
 
 ```bash
@@ -103,8 +94,7 @@ GEMINI_MODEL=gemini-3.5-flash
 GEMINI_EMBEDDING_MODEL=gemini-embedding-2
 ```
 
-The app auto-detects Gemini when `GEMINI_API_KEY` is present, but setting
-`LLM_PROVIDER=gemini` makes the deployment explicit. Local runs default to
+The app auto-detects Render and uses Gemini there. Local runs default to
 Ollama unless you manually set `LLM_PROVIDER=gemini`.
 
 ## Logs
@@ -116,5 +106,5 @@ type llmops_logs\requests.jsonl
 ## Public URL
 
 ```text
-https://stai-week5.onrender.com
+https://stai-week5-mtamondong.onrender.com
 ```

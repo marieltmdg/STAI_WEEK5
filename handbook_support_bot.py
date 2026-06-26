@@ -306,21 +306,30 @@ class JsonVectorStore:
         embedding_client,
         *,
         source_path: Path,
+        source_paths: list[Path] | None = None,
         embedding_model_name: str,
     ):
         self.path = path
         self.index_path = path / "index.json"
         self.embedding_client = embedding_client
         self.source_path = source_path
+        self.source_paths = source_paths or [source_path]
         self.embedding_model_name = embedding_model_name
         self.documents: list[RetrievedDocument] = []
 
     def _source_fingerprint(self) -> dict[str, object]:
-        stat = self.source_path.stat()
+        sources = []
+        for source_path in self.source_paths:
+            stat = source_path.stat()
+            sources.append(
+                {
+                    "source": str(source_path.resolve()),
+                    "size": stat.st_size,
+                    "mtime_ns": stat.st_mtime_ns,
+                }
+            )
         return {
-            "source": str(self.source_path.resolve()),
-            "size": stat.st_size,
-            "mtime_ns": stat.st_mtime_ns,
+            "sources": sources,
             "embedding_model": self.embedding_model_name,
         }
 
@@ -608,6 +617,7 @@ class HandbookBotBundle:
 def build_handbook_bundle(
     handbook_path: str | Path = DEFAULT_HANDBOOK_PATH,
     *,
+    additional_handbook_paths: list[str | Path] | None = None,
     student_id: str = "student_demo_102",
     provider: str | None = None,
     model_name: str | None = None,
@@ -619,6 +629,8 @@ def build_handbook_bundle(
     force_rebuild_vector_db: bool = False,
 ):
     handbook_path = Path(handbook_path)
+    additional_paths = [Path(path) for path in (additional_handbook_paths or [])]
+    source_paths = [handbook_path, *additional_paths]
     memory_path = Path(memory_path)
     vector_path = Path(vector_path)
     is_render = os.getenv("RENDER", "").lower() == "true" or bool(os.getenv("RENDER_SERVICE_ID"))
@@ -648,12 +660,15 @@ def build_handbook_bundle(
         vector_path,
         llm_strict,
         source_path=handbook_path,
+        source_paths=source_paths,
         embedding_model_name=embedding_model_name,
     )
     if force_rebuild_vector_db or not vector_store.load():
-        chunks = _load_pdf_chunks(handbook_path)
+        chunks = []
+        for source_path in source_paths:
+            chunks.extend(_load_pdf_chunks(source_path))
         if not chunks:
-            raise RuntimeError(f"No extractable text was found in {handbook_path}.")
+            raise RuntimeError("No extractable text was found in the provided PDF file(s).")
         vector_store.build(chunks)
     else:
         chunks = vector_store.documents
@@ -662,6 +677,7 @@ def build_handbook_bundle(
     strict_prompt = """
 You are a strict academic assistant. Answer the user's question using the provided context.
 Use direct facts from either the retrieved handbook context or the student memory.
+When using retrieved context, include a final Source line with the source file name and page from the [Source: ...] label.
 If the user asks about the current conversation, answer from STUDENT MEMORY.
 For questions about order, such as first or previous questions, use RECENT CONVERSATION in oldest-to-newest order.
 If neither the handbook context nor student memory explicitly contains the answer, reply with 'Data Not Found'.

@@ -167,6 +167,39 @@ class ChatDeliveryGateway:
         self.cost_per_1k_tokens_usd = cost_per_1k_tokens_usd
         self.logger = logger or JsonlLLMOpsLogger()
 
+    def _format_retrieved_doc(self, doc: Any) -> str:
+        metadata = getattr(doc, "metadata", {}) or {}
+        source = Path(str(metadata.get("source", "document"))).name
+        page = metadata.get("page")
+        chunk = metadata.get("chunk")
+        location_parts = [source]
+        if page:
+            location_parts.append(f"page {page}")
+        if chunk:
+            location_parts.append(f"chunk {chunk}")
+        return f"[Source: {', '.join(location_parts)}]\n{doc.page_content}"
+
+    def _source_label(self, doc: Any) -> str:
+        metadata = getattr(doc, "metadata", {}) or {}
+        source = Path(str(metadata.get("source", "document"))).name
+        page = metadata.get("page")
+        if page:
+            return f"{source}, page {page}"
+        return source
+
+    def _attach_sources(self, response: str, sources: str) -> str:
+        normalized_response = response.strip().lower()
+        if (
+            not sources
+            or "source:" in normalized_response
+            or normalized_response == "data not found"
+            or normalized_response.startswith("[blocked")
+            or normalized_response.startswith("request blocked")
+            or normalized_response.startswith("llm error")
+        ):
+            return response
+        return f"{response}\n\nSource: {sources}"
+
     def _build_payload(self, user_input: str) -> dict[str, str]:
         clean_input = user_input
         if hasattr(self.bot, "_redact_pii"):
@@ -174,6 +207,7 @@ class ChatDeliveryGateway:
         retrieval_queries = _build_retrieval_queries(clean_input)
 
         handbook_context = ""
+        source_labels = []
         if hasattr(self.bot, "retriever"):
             docs = []
             seen_docs = set()
@@ -183,7 +217,13 @@ class ChatDeliveryGateway:
                     if doc_key not in seen_docs:
                         docs.append(doc)
                         seen_docs.add(doc_key)
-            handbook_context = "\n".join(doc.page_content for doc in docs)
+            handbook_context = "\n\n".join(self._format_retrieved_doc(doc) for doc in docs)
+            seen_sources = set()
+            for doc in docs:
+                source_label = self._source_label(doc)
+                if source_label not in seen_sources:
+                    source_labels.append(source_label)
+                    seen_sources.add(source_label)
 
         memory_context = ""
         if hasattr(self.bot, "memory") and hasattr(self.bot.memory, "get_context"):
@@ -193,6 +233,7 @@ class ChatDeliveryGateway:
             "question": clean_input,
             "handbook_context": handbook_context,
             "memory_context": memory_context,
+            "retrieved_sources": "; ".join(source_labels[:4]) if handbook_context else "",
         }
 
     def _invoke_chain(self, payload: dict[str, str]) -> str:
@@ -271,6 +312,7 @@ class ChatDeliveryGateway:
             final_response = self.bot._output_validator(clean_response)
         else:
             final_response = clean_response
+        final_response = self._attach_sources(final_response, payload.get("retrieved_sources", ""))
 
         if hasattr(self.bot, "memory") and hasattr(self.bot.memory, "remember"):
             self.bot.memory.remember(user_input=payload["question"], bot_response=final_response)
@@ -388,6 +430,7 @@ class ChatDeliveryGateway:
             final_response = self.bot._output_validator(clean_response)
         else:
             final_response = clean_response
+        final_response = self._attach_sources(final_response, payload.get("retrieved_sources", ""))
 
         if hasattr(self.bot, "memory") and hasattr(self.bot.memory, "remember"):
             self.bot.memory.remember(user_input=payload["question"], bot_response=final_response)
@@ -527,18 +570,55 @@ def render_streamlit_app(
     if uploaded_pdf is not None:
         upload_key = f"{uploaded_pdf.name}:{uploaded_pdf.size}"
         if on_pdf_upload is not None and st.session_state.get("uploaded_pdf_key") != upload_key:
-            updated_gateway = on_pdf_upload(uploaded_pdf)
+            status = st.status(
+                f"Loading {uploaded_pdf.name} into the knowledge base...",
+                expanded=True,
+            )
+            status.write("Reading PDF text and creating searchable chunks.")
+            with st.spinner("Embedding PDF content. This can take a moment."):
+                updated_gateway = on_pdf_upload(uploaded_pdf)
             if updated_gateway is not None:
                 current_gateway = updated_gateway
                 st.session_state.gateway = updated_gateway
                 st.session_state.uploaded_pdf_key = upload_key
-        st.info(f"Loaded {uploaded_pdf.name} for this session.")
+                st.session_state.active_document_name = st.session_state.get(
+                    "knowledge_base_label",
+                    f"school_handbook.pdf + {uploaded_pdf.name}",
+                )
+                chunk_count = st.session_state.get("uploaded_pdf_chunk_count")
+                if chunk_count:
+                    status.update(
+                        label=f"Added {uploaded_pdf.name} with {chunk_count} searchable chunks.",
+                        state="complete",
+                        expanded=False,
+                    )
+                else:
+                    status.update(
+                        label=f"Added {uploaded_pdf.name} to the knowledge base.",
+                        state="complete",
+                        expanded=False,
+                    )
+                st.rerun()
+            else:
+                status.update(
+                    label=f"Could not add {uploaded_pdf.name}.",
+                    state="error",
+                    expanded=True,
+                )
+        chunk_count = st.session_state.get("uploaded_pdf_chunk_count")
+        if chunk_count:
+            st.success(f"Loaded {uploaded_pdf.name} with {chunk_count} searchable chunks.")
+        else:
+            st.info(f"Loaded {uploaded_pdf.name} for this session.")
+    else:
+        st.session_state.setdefault("active_document_name", "school_handbook.pdf")
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    prompt = st.chat_input("Ask the bot anything about the handbook")
+    active_document = st.session_state.get("active_document_name", "school_handbook.pdf")
+    prompt = st.chat_input(f"Ask the bot anything about the knowledge base: {active_document}")
     if not prompt:
         return
 

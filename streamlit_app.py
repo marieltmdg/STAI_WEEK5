@@ -32,23 +32,23 @@ def main():
 
     def handle_pdf_upload(uploaded_file):
         upload_root = Path(tempfile.mkdtemp(prefix="handbook_upload_"))
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf", dir=upload_root) as handle:
-            handle.write(uploaded_file.getbuffer())
-            temp_path = Path(handle.name)
+        temp_path = upload_root / Path(uploaded_file.name).name
+        temp_path.write_bytes(uploaded_file.getbuffer())
 
         rebuilt = build_handbook_bundle(
-            handbook_path=temp_path,
-            student_id=f"uploaded_{uuid4().hex}",
+            additional_handbook_paths=[temp_path],
+            student_id=f"expanded_{uuid4().hex}",
             memory_path=upload_root / "student_memory_db",
             vector_path=upload_root / "handbook_vector_db",
         )
         st.session_state.uploaded_pdf_chunk_count = len(rebuilt.chunks)
+        st.session_state.knowledge_base_label = f"school_handbook.pdf + {uploaded_file.name}"
         return rebuilt.chat_gateway
 
     render_streamlit_app(
         bundle.chat_gateway,
-        title="Homework: Week 5",
-        subtitle="Ship the Week 3-4 system as two channels with full LLMOps logging",
+        title="Oakridge Academy Chatbot",
+        subtitle="Includes RAG, memory, LLMOps logging, and 3-layer guardrails",
         on_pdf_upload=handle_pdf_upload,
         configure_page=False,
     )
