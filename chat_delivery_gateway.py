@@ -217,6 +217,16 @@ class ChatDeliveryGateway:
                         seen_docs.add(doc_key)
             if hasattr(self.bot, "_keyword_score"):
                 docs = sorted(docs, key=lambda doc: self.bot._keyword_score(clean_input, doc.page_content), reverse=True)
+                keyword_scores = [self.bot._keyword_score(clean_input, doc.page_content) for doc in docs]
+                best_keyword_score = max(keyword_scores, default=0.0)
+                if best_keyword_score >= 0.5:
+                    minimum_score = max(0.3, best_keyword_score - 0.25)
+                    docs = [
+                        doc
+                        for doc, score in zip(docs, keyword_scores)
+                        if score >= minimum_score
+                    ]
+                docs = docs[:4]
             handbook_context = "\n\n".join(self._format_retrieved_doc(doc) for doc in docs)
             seen_sources = set()
             keyword_scores = [self.bot._keyword_score(clean_input, doc.page_content) for doc in docs] if hasattr(self.bot, "_keyword_score") else []

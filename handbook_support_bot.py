@@ -247,6 +247,10 @@ def _tokenize(text: str) -> list[str]:
     ]
 
 
+def _normalize_for_matching(text: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
+
+
 def _keyword_score(query: str, text: str) -> float:
     query_tokens = _tokenize(query)
     if not query_tokens:
@@ -258,8 +262,8 @@ def _keyword_score(query: str, text: str) -> float:
     overlap = sum(1 for token in unique_query_tokens if token in text_token_set)
     score = overlap / len(unique_query_tokens)
 
-    normalized_query = " ".join(query.lower().split())
-    normalized_text = " ".join(text.lower().split())
+    normalized_query = _normalize_for_matching(query)
+    normalized_text = _normalize_for_matching(text)
     if normalized_query and normalized_query in normalized_text:
         score += 0.5
     for index in range(len(query_tokens) - 1):
@@ -685,8 +689,9 @@ def build_handbook_bundle(
     good_retriever = MMRRetriever(vector_store, llm_strict, k=4, fetch_k=16)
     strict_prompt = """
 You are a strict academic assistant. Answer the user's question using the provided context.
-Use direct wording from either the retrieved handbook context or the student memory.
-Answer with the most relevant sentence(s) or short excerpt from the provided context. Do not paraphrase beyond light trimming for readability.
+Use direct wording from either the retrieved context or the student memory.
+Use direct facts using the most relevant sentence(s) or short excerpt from the provided context.
+Do not paste full raw chunks or unrelated retrieved text. Do not paraphrase beyond light trimming for readability.
 Prefer the retrieved source that most directly matches the user's question.
 When using retrieved context, include a final Source line with the source file name and page from the [Source: ...] label.
 If the user asks about the current conversation, answer from STUDENT MEMORY.
