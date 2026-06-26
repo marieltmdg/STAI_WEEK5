@@ -15,12 +15,12 @@ def get_bundle():
 
 
 def main():
-    st.set_page_config(page_title="Homework: Week 5", page_icon="chat", layout="wide")
-    st.title("Homework: Week 5")
-    st.caption("Ship the Week 3-4 system as two channels with full LLMOps logging")
+    st.set_page_config(page_title="Oakridge Academy Chatbot", page_icon="chat", layout="wide")
+    st.title("Oakridge Academy Chatbot")
+    st.caption("Includes RAG, memory, LLMOps logging, and 3-layer guardrails | Made by Mariel Tamondong")
 
     splash = st.empty()
-    splash.info("Loading the handbook, embeddings, and local RAG pipeline...")
+    splash.info("Loading the handbook, embeddings, and RAG pipeline...")
 
     try:
         bundle = get_bundle()

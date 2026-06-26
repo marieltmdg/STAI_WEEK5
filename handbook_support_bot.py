@@ -22,6 +22,8 @@ DEFAULT_VECTOR_PATH = Path("handbook_vector_db")
 DEFAULT_MODEL = "gemma3:1b"
 DEFAULT_EMBEDDING_MODEL = "nomic-embed-text"
 DEFAULT_OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+DEFAULT_GEMINI_EMBEDDING_MODEL = "gemini-embedding-2"
 
 STOPWORDS = {
     "a",
@@ -145,6 +147,87 @@ class OllamaClient:
         return self.generate(prompt)
 
 
+class GeminiClient:
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        model_name: str = DEFAULT_GEMINI_MODEL,
+        embedding_model_name: str = DEFAULT_GEMINI_EMBEDDING_MODEL,
+        temperature: float = 0.0,
+    ):
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
+            raise RuntimeError("GEMINI_API_KEY is required when LLM_PROVIDER=gemini.")
+        try:
+            from google import genai
+            from google.genai import types
+        except ImportError as exc:
+            raise RuntimeError("Install google-genai to use Gemini: python -m pip install google-genai") from exc
+
+        self.client = genai.Client(api_key=self.api_key)
+        self.types = types
+        self.model_name = model_name
+        self.embedding_model_name = embedding_model_name
+        self.temperature = temperature
+
+    def embed(self, text: str) -> list[float]:
+        try:
+            result = self.client.models.embed_content(
+                model=self.embedding_model_name,
+                contents=text,
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Gemini embedding request failed: {exc}") from exc
+
+        embeddings = getattr(result, "embeddings", None) or []
+        if not embeddings:
+            raise RuntimeError("Gemini embedding response did not include embeddings.")
+        values = getattr(embeddings[0], "values", None)
+        if values is None:
+            raise RuntimeError("Gemini embedding response did not include embedding values.")
+        return [float(value) for value in values]
+
+    def generate(self, prompt: str) -> str:
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=self.types.GenerateContentConfig(temperature=self.temperature),
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Gemini generation request failed: {exc}") from exc
+        return str(getattr(response, "text", "") or "").strip()
+
+    def invoke(self, prompt: str) -> str:
+        return self.generate(prompt)
+
+
+def build_llm_client(
+    *,
+    provider: str,
+    model_name: str,
+    embedding_model_name: str,
+    ollama_base_url: str,
+    temperature: float = 0.0,
+):
+    normalized_provider = provider.strip().lower()
+    if normalized_provider == "gemini":
+        return GeminiClient(
+            model_name=model_name,
+            embedding_model_name=embedding_model_name,
+            temperature=temperature,
+        )
+    if normalized_provider == "ollama":
+        return OllamaClient(
+            model_name=model_name,
+            embedding_model_name=embedding_model_name,
+            base_url=ollama_base_url,
+            temperature=temperature,
+        )
+    raise RuntimeError("LLM_PROVIDER must be either 'ollama' or 'gemini'.")
+
+
 def _cosine_similarity(left: list[float], right: list[float]) -> float:
     if not left or not right:
         return 0.0
@@ -220,7 +303,7 @@ class JsonVectorStore:
     def __init__(
         self,
         path: Path,
-        embedding_client: OllamaClient,
+        embedding_client,
         *,
         source_path: Path,
         embedding_model_name: str,
@@ -290,7 +373,7 @@ class JsonVectorStore:
 
 
 class MMRRetriever:
-    def __init__(self, store: JsonVectorStore, embedding_client: OllamaClient, *, k: int = 4, fetch_k: int = 16):
+    def __init__(self, store: JsonVectorStore, embedding_client, *, k: int = 4, fetch_k: int = 16):
         self.store = store
         self.embedding_client = embedding_client
         self.k = k
@@ -331,7 +414,7 @@ class MMRRetriever:
 
 
 class StrictPromptChain:
-    def __init__(self, llm: OllamaClient, template: str):
+    def __init__(self, llm, template: str):
         self.llm = llm
         self.template = template
 
@@ -345,7 +428,7 @@ class StrictPromptChain:
 class JsonSummaryBufferMemory:
     def __init__(
         self,
-        llm: OllamaClient,
+        llm,
         student_id: str,
         memory_path: Path = DEFAULT_MEMORY_PATH,
     ):
@@ -433,7 +516,7 @@ class SecureStudentBot:
         retriever,
         llm_chain,
         *,
-        memory_llm: OllamaClient,
+        memory_llm,
         memory_path: Path = DEFAULT_MEMORY_PATH,
     ):
         self.llm = llm_chain
@@ -526,8 +609,9 @@ def build_handbook_bundle(
     handbook_path: str | Path = DEFAULT_HANDBOOK_PATH,
     *,
     student_id: str = "student_demo_102",
-    model_name: str = DEFAULT_MODEL,
-    embedding_model_name: str = DEFAULT_EMBEDDING_MODEL,
+    provider: str | None = None,
+    model_name: str | None = None,
+    embedding_model_name: str | None = None,
     ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL,
     memory_path: str | Path = DEFAULT_MEMORY_PATH,
     vector_path: str | Path = DEFAULT_VECTOR_PATH,
@@ -537,14 +621,26 @@ def build_handbook_bundle(
     handbook_path = Path(handbook_path)
     memory_path = Path(memory_path)
     vector_path = Path(vector_path)
+    is_render = os.getenv("RENDER", "").lower() == "true" or bool(os.getenv("RENDER_SERVICE_ID"))
+    provider = provider or os.getenv("LLM_PROVIDER") or ("gemini" if is_render else "ollama")
+    if provider.strip().lower() == "gemini":
+        model_name = model_name or os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+        embedding_model_name = embedding_model_name or os.getenv(
+            "GEMINI_EMBEDDING_MODEL",
+            DEFAULT_GEMINI_EMBEDDING_MODEL,
+        )
+    else:
+        model_name = model_name or os.getenv("OLLAMA_MODEL", DEFAULT_MODEL)
+        embedding_model_name = embedding_model_name or os.getenv("OLLAMA_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
 
     if force_rebuild_vector_db and vector_path.exists():
         shutil.rmtree(vector_path)
 
-    llm_strict = OllamaClient(
+    llm_strict = build_llm_client(
+        provider=provider,
         model_name=model_name,
         embedding_model_name=embedding_model_name,
-        base_url=ollama_base_url,
+        ollama_base_url=ollama_base_url,
         temperature=0.0,
     )
 
@@ -623,7 +719,10 @@ __all__ = [
     "DEFAULT_MODEL",
     "DEFAULT_EMBEDDING_MODEL",
     "DEFAULT_OLLAMA_BASE_URL",
+    "DEFAULT_GEMINI_MODEL",
+    "DEFAULT_GEMINI_EMBEDDING_MODEL",
     "HandbookBotBundle",
+    "GeminiClient",
     "SecureStudentBot",
     "JsonSummaryBufferMemory",
     "build_handbook_bundle",

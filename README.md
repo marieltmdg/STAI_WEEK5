@@ -3,14 +3,24 @@
 ## Prerequisites
 
 - Python 3.12+
-- Ollama
+- Gemini API key for Render deployment
+- Ollama, optional for local-only runs
 - Docker Desktop, for Docker runs
 
-Start Ollama and pull the required models:
+For local Ollama runs, start Ollama and pull the required models:
 
 ```bash
 ollama pull gemma3:1b
 ollama pull nomic-embed-text
+```
+
+For Gemini runs on Render, set these environment variables:
+
+```bash
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your_api_key_here
+GEMINI_MODEL=gemini-3.5-flash
+GEMINI_EMBEDDING_MODEL=gemini-embedding-2
 ```
 
 ## Local Setup
@@ -81,6 +91,21 @@ FastAPI:
 ```text
 http://localhost:8000
 ```
+
+## Render With Gemini
+
+Use these Render environment variables:
+
+```text
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=<your Gemini API key>
+GEMINI_MODEL=gemini-3.5-flash
+GEMINI_EMBEDDING_MODEL=gemini-embedding-2
+```
+
+The app auto-detects Gemini when `GEMINI_API_KEY` is present, but setting
+`LLM_PROVIDER=gemini` makes the deployment explicit. Local runs default to
+Ollama unless you manually set `LLM_PROVIDER=gemini`.
 
 ## Logs
 
