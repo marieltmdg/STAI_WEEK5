@@ -31,18 +31,26 @@ def main():
     splash.empty()
 
     def handle_pdf_upload(uploaded_file):
-        upload_root = Path(tempfile.mkdtemp(prefix="handbook_upload_"))
-        temp_path = upload_root / Path(uploaded_file.name).name
+        upload_root = Path(st.session_state.setdefault("knowledge_base_root", tempfile.mkdtemp(prefix="handbook_upload_")))
+        student_id = st.session_state.setdefault("knowledge_base_student_id", f"expanded_{uuid4().hex}")
+        uploaded_paths = st.session_state.setdefault("uploaded_pdf_paths", [])
+        uploaded_names = st.session_state.setdefault("uploaded_pdf_names", [])
+
+        safe_name = Path(uploaded_file.name).name
+        temp_path = upload_root / f"{uuid4().hex}_{safe_name}"
         temp_path.write_bytes(uploaded_file.getbuffer())
+        uploaded_paths.append(str(temp_path))
+        uploaded_names.append(safe_name)
 
         rebuilt = build_handbook_bundle(
-            additional_handbook_paths=[temp_path],
-            student_id=f"expanded_{uuid4().hex}",
+            additional_handbook_paths=[Path(path) for path in uploaded_paths],
+            student_id=student_id,
             memory_path=upload_root / "student_memory_db",
             vector_path=upload_root / "handbook_vector_db",
+            force_rebuild_vector_db=True,
         )
         st.session_state.uploaded_pdf_chunk_count = len(rebuilt.chunks)
-        st.session_state.knowledge_base_label = f"school_handbook.pdf + {uploaded_file.name}"
+        st.session_state.knowledge_base_label = "school_handbook.pdf + " + " + ".join(uploaded_names)
         return rebuilt.chat_gateway
 
     render_streamlit_app(
