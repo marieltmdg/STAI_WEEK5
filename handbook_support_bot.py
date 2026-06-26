@@ -100,6 +100,8 @@ class OllamaClient:
         self.model_name = model_name
         self.embedding_model_name = embedding_model_name
         self.base_url = base_url.rstrip("/")
+        if self.base_url.endswith("/api"):
+            self.base_url = self.base_url[: -len("/api")]
         self.temperature = temperature
 
     def _post(self, endpoint: str, payload: dict[str, object]) -> dict[str, object]:
