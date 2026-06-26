@@ -81,6 +81,16 @@ class LLMOpsRecord:
     output_text: str
 
 
+REQUIRED_LLMOPS_FIELDS = [
+    "latency_ms",
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "model",
+    "estimated_cost_usd",
+]
+
+
 class JsonlLLMOpsLogger:
     """
     Minimal structured logger that writes one JSON line per request.
@@ -99,7 +109,8 @@ class JsonlLLMOpsLogger:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
     def write(self, record: LLMOpsRecord) -> None:
-        payload = asdict(record)
+        record_payload = asdict(record)
+        payload = {field: record_payload[field] for field in REQUIRED_LLMOPS_FIELDS}
         with self.log_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
 
