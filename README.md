@@ -7,15 +7,15 @@ This project ships the Week 3 RAG system and Week 4 memory/guardrail system thro
 3. Structured JSONL LLMOps logging.
 4. Dockerfile that starts both servers.
 
-The Week 3 and Week 4 notebooks are reference material only. The runtime app does not import or execute `.ipynb` files; the needed notebook logic has been moved into Python modules so Streamlit, FastAPI, and Docker can start quickly and predictably.
+The Week 3 and Week 4 notebook logic has been moved into Python modules. The runtime app does not import or execute `.ipynb` files, so Streamlit, FastAPI, and Docker can start quickly and predictably.
 
 ## Implementation Provenance
 
 The production Python files lift the final notebook patterns instead of sourcing notebooks at runtime:
 
-- Week 3 notebook cells 76, 92, 101, and 131 map to [handbook_support_bot.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/LAB5/handbook_support_bot.py): `PyPDFLoader`, `SemanticChunker`, Chroma vector storage, MMR retrieval, `gemma3:1b` at `temperature=0.0`, and the strict `Data Not Found` grounded prompt. The deployed retriever uses `k=4` and `fetch_k=16` to improve coverage for short policy questions while preserving the Week 3 MMR approach.
-- Week 4 notebook cells 23, 69, and 71 map to [handbook_support_bot.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/LAB5/handbook_support_bot.py): PII redaction, Chroma-backed memory with summary/recent conversation context, semantic recall, input policy guardrails, output guardrails, and safe memory storage after redaction.
-- Week 5 delivery requirements are implemented in [chat_delivery_gateway.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/LAB5/chat_delivery_gateway.py): shared Streamlit/FastAPI gateway, response streaming, SSE events, and JSONL LLMOps logging.
+- Week 3 notebook cells 76, 92, 101, and 131 map to [handbook_support_bot.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/STAI_WEEK5/handbook_support_bot.py): PDF loading, chunking, local Ollama embeddings, persistent vector storage, MMR retrieval, `gemma3:1b` at `temperature=0.0`, and the strict `Data Not Found` grounded prompt. The deployed retriever uses `k=4` and `fetch_k=16` to improve coverage for short policy questions while preserving the Week 3 MMR approach.
+- Week 4 notebook cells 23, 69, and 71 map to [handbook_support_bot.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/STAI_WEEK5/handbook_support_bot.py): PII redaction, persistent embedded memory with summary/recent conversation context, semantic recall, input policy guardrails, output guardrails, and safe memory storage after redaction.
+- Week 5 delivery requirements are implemented in [chat_delivery_gateway.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/STAI_WEEK5/chat_delivery_gateway.py): shared Streamlit/FastAPI gateway, response streaming, SSE events, and JSONL LLMOps logging.
 
 ## 1. Prerequisites
 
@@ -47,18 +47,18 @@ Install the app dependencies:
 python -m pip install -r requirements-app.txt
 ```
 
-Use `requirements.txt` instead if you also want the notebook/demo dependencies.
+`requirements.txt` mirrors the runtime dependency set for simple local installs.
 
 ## 3. Verify The Files
 
 The required runtime files are:
 
-- [handbook_support_bot.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/LAB5/handbook_support_bot.py): handbook RAG, memory, and guardrails.
-- [chat_delivery_gateway.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/LAB5/chat_delivery_gateway.py): shared chat, streaming, SSE, and JSONL logging layer.
-- [streamlit_app.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/LAB5/streamlit_app.py): Streamlit chat app.
-- [api.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/LAB5/api.py): FastAPI app.
-- [Dockerfile](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/LAB5/Dockerfile): multi-stage container build.
-- [school_handbook.pdf](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/LAB5/school_handbook.pdf): default PDF source.
+- [handbook_support_bot.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/STAI_WEEK5/handbook_support_bot.py): handbook RAG, memory, and guardrails.
+- [chat_delivery_gateway.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/STAI_WEEK5/chat_delivery_gateway.py): shared chat, streaming, SSE, and JSONL logging layer.
+- [streamlit_app.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/STAI_WEEK5/streamlit_app.py): Streamlit chat app.
+- [api.py](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/STAI_WEEK5/api.py): FastAPI app.
+- [Dockerfile](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/STAI_WEEK5/Dockerfile): multi-stage container build.
+- [school_handbook.pdf](/C:/Users/marie/OneDrive/Documents/School/DLSU25-26/TERM3/STAI100/STAI_WEEK5/school_handbook.pdf): default PDF source.
 
 The first run creates or reuses:
 
@@ -80,7 +80,7 @@ http://localhost:8501
 
 Use the chat input to ask handbook questions. To test upload support, upload another PDF in the app; that uploaded PDF gets its own temporary vector store for the session.
 
-Uploaded PDFs are saved to a temporary session folder, parsed with `PyPDFLoader`, chunked with `SemanticChunker`, embedded with `nomic-embed-text`, and stored in a temporary Chroma vector DB for that uploaded document. The uploaded PDF and its vector DB are session-local temporary files, not permanent project files.
+Uploaded PDFs are saved to a temporary session folder, parsed with `pypdf`, chunked locally, embedded with `nomic-embed-text`, and stored in a temporary JSON vector index for that uploaded document. The uploaded PDF and its vector index are session-local temporary files, not permanent project files.
 
 ## 5. Run FastAPI
 

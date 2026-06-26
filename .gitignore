@@ -5,6 +5,7 @@ __pycache__/
 handbook_vector_db/
 student_memory_db/
 llmops_logs/
+reference_notebooks/
 
 .streamlit/
 *.log
