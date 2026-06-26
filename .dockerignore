@@ -1,0 +1,11 @@
+.git
+.agents
+.venv
+__pycache__/
+*.py[cod]
+handbook_vector_db/
+student_memory_db/
+llmops_logs/
+reference_notebooks/
+.streamlit/
+*.log
